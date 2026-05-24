@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tuitui - Web Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Device Frames */
+        .device-frame {
+            border: 12px solid #1f2937;
+            border-radius: 2rem;
+            background: #1f2937;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            overflow: hidden;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .device-mobile {
+            width: 375px;
+            height: 667px;
+        }
+
+        .device-tablet {
+            width: 768px;
+            height: 1024px;
+        }
+
+        .device-laptop {
+            width: 1024px;
+            height: 600px;
+            border-radius: 0.5rem;
+            border-width: 8px;
+            border-bottom-width: 24px;
+        }
+
+        .device-screen {
+            background-color: #ffffff;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .device-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background-color: white;
+        }
+
+        /* Loading & UI States */
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease-in-out;
+            z-index: 10;
+        }
+
+        .loading-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .device-view-container {
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+
+        .device-view-container.active {
+            display: flex;
+            opacity: 1;
+            animation: fadeIn 0.4s ease-in-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .device-selector-btn {
+            transition: all 0.2s;
+        }
+        
+        .device-selector-btn.active {
+            background-color: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Hide scrollbar for the main canvas area */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen flex flex-col font-sans overflow-hidden">
+
+    <!-- Header & Controls -->
+    <header class="bg-white shadow-sm border-b border-gray-200 p-4 z-10 relative">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+                <!-- Logo sized up to h-32 and text removed -->
+                <img src="https://ik.imagekit.io/fxz1ou8xf/Untitled%20-%2024%20May%202026%20at%2001.36.20%20(1).png" alt="I Choose Violence Duck Logo" class="h-32 w-auto drop-shadow-md rounded-full">
+            </div>
+
+            <!-- Input Controls (Tabs) -->
+            <div class="w-full max-w-lg bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden flex-shrink-0">
+                <div class="flex border-b border-gray-200">
+                    <button class="tab-btn flex-1 py-2 text-sm font-medium text-blue-600 border-b-2 border-blue-600 focus:outline-none transition-colors" data-target="url-input-area">
+                        <i class="fa-solid fa-link mr-1"></i> URL
+                    </button>
+                    <button class="tab-btn flex-1 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 focus:outline-none transition-colors" data-target="html-input-area">
+                        <i class="fa-solid fa-code mr-1"></i> HTML
+                    </button>
+                </div>
+                
+                <!-- URL Input Tab -->
+                <div id="url-input-area" class="tab-content active p-2">
+                    <form id="url-form" class="flex gap-2">
+                        <input type="url" id="url-input" placeholder="https://example.com" class="flex-1 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm transition-all" required>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-sm">
+                            View
+                        </button>
+                    </form>
+                    <p class="text-[10px] text-gray-400 mt-1 ml-1"><i class="fa-solid fa-circle-info"></i> Note: Some sites (like Google) block embedding.</p>
+                </div>
+
+                <!-- HTML Input Tab -->
+                <div id="html-input-area" class="tab-content p-2">
+                    <div class="flex flex-col gap-2">
+                        <textarea id="html-input" rows="3" placeholder="Paste your HTML code here... (e.g., <h1>Hello World</h1>)" class="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono text-sm resize-y"></textarea>
+                        <div class="flex justify-end gap-2">
+                            <button id="clear-html-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-1.5 rounded-md text-sm font-medium transition-colors">Clear</button>
+                            <button id="render-html-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-1.5 rounded-md text-sm font-medium transition-colors shadow-sm">
+                                Render HTML
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- View & Zoom Controls -->
+            <div class="flex flex-col sm:flex-row gap-4 items-center">
+                <div class="flex bg-gray-100 p-1 rounded-lg border border-gray-200 shadow-inner">
+                    <button class="device-selector-btn active bg-blue-500 text-white px-4 py-1.5 text-sm font-medium rounded-md shadow-sm" data-device="mobile">
+                        <i class="fa-solid fa-mobile-screen mr-1"></i> Mobile
+                    </button>
+                    <button class="device-selector-btn text-gray-700 hover:bg-gray-200 px-4 py-1.5 text-sm font-medium rounded-md" data-device="tablet">
+                        <i class="fa-solid fa-tablet-screen-button mr-1"></i> Tablet
+                    </button>
+                    <button class="device-selector-btn text-gray-700 hover:bg-gray-200 px-4 py-1.5 text-sm font-medium rounded-md" data-device="laptop">
+                        <i class="fa-solid fa-laptop mr-1"></i> Laptop
+                    </button>
+                </div>
+
+                <div class="flex gap-2 items-center">
+                     <span class="text-sm text-gray-500 self-center hidden xl:block">Zoom:</span>
+                     <select id="zoom-control" class="border border-gray-300 rounded-md py-1.5 px-3 text-sm focus:ring-blue-500 focus:border-blue-500 outline-none bg-white shadow-sm">
+                        <option value="0.25">25%</option>
+                        <option value="0.5">50%</option>
+                        <option value="0.75">75%</option>
+                        <option value="1" selected>100%</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-auto bg-gray-100 p-8 relative flex justify-center">
+        <!-- Scale Container -->
+        <div id="scale-container" class="flex items-start justify-center transition-transform duration-300 origin-top" style="transform: scale(1);">
+            
+            <!-- Mobile View -->
+            <div id="view-mobile" class="device-view-container active flex-col items-center gap-4">
+                <div class="bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200 text-sm font-semibold text-gray-600 flex items-center gap-2">
+                    <i class="fa-solid fa-mobile-screen"></i> Mobile (375 x 667)
+                </div>
+                <div class="device-frame device-mobile">
+                    <div class="device-screen relative">
+                        <div class="loading-overlay" id="loading-mobile">
+                            <div class="spinner"></div>
+                        </div>
+                        <iframe id="iframe-mobile" class="device-iframe" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals" title="Mobile View"></iframe>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tablet View -->
+            <div id="view-tablet" class="device-view-container flex-col items-center gap-4">
+                <div class="bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200 text-sm font-semibold text-gray-600 flex items-center gap-2">
+                    <i class="fa-solid fa-tablet-screen-button"></i> Tablet (768 x 1024)
+                </div>
+                <div class="device-frame device-tablet">
+                    <div class="device-screen relative">
+                        <div class="loading-overlay" id="loading-tablet">
+                            <div class="spinner"></div>
+                        </div>
+                        <iframe id="iframe-tablet" class="device-iframe" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals" title="Tablet View"></iframe>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Laptop View -->
+            <div id="view-laptop" class="device-view-container flex-col items-center gap-4">
+                <div class="bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200 text-sm font-semibold text-gray-600 flex items-center gap-2">
+                    <i class="fa-solid fa-laptop"></i> Laptop (1024 x 600)
+                </div>
+                <div class="device-frame device-laptop">
+                    <div class="device-screen relative">
+                         <div class="loading-overlay" id="loading-laptop">
+                            <div class="spinner"></div>
+                        </div>
+                        <iframe id="iframe-laptop" class="device-iframe" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals" title="Laptop View"></iframe>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- UI Elements Setup ---
+            const tabBtns = document.querySelectorAll('.tab-btn');
+            const tabContents = document.querySelectorAll('.tab-content');
+            
+            const urlForm = document.getElementById('url-form');
+            const urlInput = document.getElementById('url-input');
+            
+            const htmlInput = document.getElementById('html-input');
+            const renderHtmlBtn = document.getElementById('render-html-btn');
+            const clearHtmlBtn = document.getElementById('clear-html-btn');
+            
+            const zoomControl = document.getElementById('zoom-control');
+            const scaleContainer = document.getElementById('scale-container');
+
+            const deviceSelectorBtns = document.querySelectorAll('.device-selector-btn');
+            const deviceViews = {
+                mobile: document.getElementById('view-mobile'),
+                tablet: document.getElementById('view-tablet'),
+                laptop: document.getElementById('view-laptop')
+            };
+
+            const iframes = {
+                mobile: document.getElementById('iframe-mobile'),
+                tablet: document.getElementById('iframe-tablet'),
+                laptop: document.getElementById('iframe-laptop')
+            };
+
+            const loaders = {
+                mobile: document.getElementById('loading-mobile'),
+                tablet: document.getElementById('loading-tablet'),
+                laptop: document.getElementById('loading-laptop')
+            };
+
+            // Helpers for loading overlay
+            const showLoaders = () => {
+                Object.values(loaders).forEach(loader => loader.classList.add('active'));
+            };
+
+            const hideLoaders = () => {
+                Object.values(loaders).forEach(loader => loader.classList.remove('active'));
+            };
+
+            // Loading Data Handlers
+            const loadUrlIntoFrames = (url) => {
+                showLoaders();
+                let loadedCount = 0;
+                const totalFrames = Object.keys(iframes).length;
+
+                Object.values(iframes).forEach(iframe => {
+                    iframe.onload = () => {
+                        loadedCount++;
+                        if (loadedCount === totalFrames) hideLoaders();
+                    };
+                    iframe.onerror = () => {
+                        loadedCount++;
+                        if (loadedCount === totalFrames) hideLoaders();
+                    };
+                    iframe.src = url;
+                });
+                
+                // Fallback timeout in case onload event fails
+                setTimeout(hideLoaders, 3000);
+            };
+
+            const loadHtmlIntoFrames = (htmlContent) => {
+                showLoaders();
+                
+                Object.values(iframes).forEach(iframe => {
+                    const blob = new Blob([htmlContent], { type: 'text/html' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    iframe.onload = () => {
+                        URL.revokeObjectURL(url);
+                    };
+                    iframe.src = url;
+                });
+                
+                setTimeout(hideLoaders, 500);
+            };
+
+            // Display initial demo content
+            const initialHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f0fdf4; color: #166534; text-align: center; }
+                    h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+                    p { color: #15803d; }
+                </style>
+            </head>
+            <body>
+                <div>
+                    <h1>Welcome to Tuitui!</h1>
+                    <p>Enter a URL or paste HTML to get started.</p>
+                </div>
+            </body>
+            </html>
+            `;
+            loadHtmlIntoFrames(initialHtml);
+
+            // --- Tab Switching Logic ---
+            tabBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    tabBtns.forEach(b => {
+                        b.classList.remove('text-blue-600', 'border-b-2', 'border-blue-600');
+                        b.classList.add('text-gray-500');
+                    });
+                    
+                    btn.classList.remove('text-gray-500');
+                    btn.classList.add('text-blue-600', 'border-b-2', 'border-blue-600');
+
+                    tabContents.forEach(content => {
+                        content.classList.remove('active');
+                    });
+
+                    const targetId = btn.getAttribute('data-target');
+                    document.getElementById(targetId).classList.add('active');
+                });
+            });
+
+            // --- Device Selection Logic ---
+            deviceSelectorBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const targetDevice = btn.getAttribute('data-device');
+
+                    // Update button active state styling
+                    deviceSelectorBtns.forEach(b => {
+                        b.classList.remove('active', 'bg-blue-500', 'text-white');
+                        b.classList.add('text-gray-700', 'hover:bg-gray-200');
+                    });
+                    btn.classList.add('active', 'bg-blue-500', 'text-white');
+                    btn.classList.remove('text-gray-700', 'hover:bg-gray-200');
+
+                    // Switch active view
+                    Object.values(deviceViews).forEach(view => {
+                        view.classList.remove('active');
+                    });
+                    deviceViews[targetDevice].classList.add('active');
+                });
+            });
+
+            // --- Zoom Logic ---
+            zoomControl.addEventListener('change', (e) => {
+                const scaleValue = e.target.value;
+                scaleContainer.style.transform = `scale(${scaleValue})`;
+            });
+
+            // --- Form Inputs Logic ---
+            urlForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const url = urlInput.value.trim();
+                if (url) {
+                    const validUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+                    loadUrlIntoFrames(validUrl);
+                }
+            });
+
+            renderHtmlBtn.addEventListener('click', () => {
+                const htmlContent = htmlInput.value;
+                if (htmlContent.trim()) {
+                    loadHtmlIntoFrames(htmlContent);
+                }
+            });
+
+            clearHtmlBtn.addEventListener('click', () => {
+                htmlInput.value = '';
+            });
+        });
+    </script>
+</body>
+</html>
